@@ -34,15 +34,25 @@ contrarian_out, t2 = ask(
 )
 print(f"[{t2}s] {contrarian_out}\n")
 
+# ✅ NEW QUANT BLOCK ADDED HERE
+print("=" * 50)
+print("Testing qwen2.5:7b (Quant)...")
+quant_out, t_quant = ask(
+    "qwen2.5:7b",
+    "Given this portfolio scenario and the two views above, verify the numerical reasoning. Are the figures and percentages being cited correctly? Flag any mathematical inconsistencies in 2-3 sentences.",
+    context=f"Analyst: {analyst_out}\n\nContrarian: {contrarian_out}"
+)
+print(f"[{t_quant}s] {quant_out}\n")
+
 print("=" * 50)
 print("Testing synthesis (deepseek-r1:8b as Arbiter)...")
 synthesis, t3 = ask(
     "deepseek-r1:8b",
-    "Given the analyst view and the contrarian challenge, give a final verdict with a confidence score (0-100%) in 2-3 sentences.",
-    context=f"Analyst: {analyst_out}\n\nContrarian: {contrarian_out}"
+    "Given the analyst view, the contrarian challenge, and the quant verification, give a final verdict with a confidence score (0-100%) in 2-3 sentences.",
+    context=f"Analyst: {analyst_out}\n\nContrarian: {contrarian_out}\n\nQuant: {quant_out}"
 )
 print(f"[{t3}s] {synthesis}\n")
 
 print("=" * 50)
-print(f"Total debate time: {round(t1+t2+t3, 1)}s")
-print("All models working!" if analyst_out and contrarian_out and synthesis else "Something failed.")
+print(f"Total debate time: {round(t1+t2+t_quant+t3, 1)}s")
+print("All models working!" if analyst_out and contrarian_out and quant_out and synthesis else "Something failed.")
