@@ -1,23 +1,37 @@
-# test_debate.py
 import requests
 import time
+import json
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
+# 🔧 CONFIG
+TIMEOUT = 600
+MAX_CONTEXT_CHARS = 4000
+
 def ask(model, prompt, context=""):
     full_prompt = f"{context}\n\n---\n{prompt}" if context else prompt
-    payload = {"model": model, "prompt": full_prompt, "stream": False}
-    start = time.time()
-    res = requests.post(OLLAMA_URL, json=payload, timeout=300)
-    elapsed = round(time.time() - start, 1)
-    return res.json()["response"].strip(), elapsed
 
-# --- Test input (your real format) ---
+    payload = {
+        "model": model,
+        "prompt": full_prompt,
+        "stream": False
+    }
+
+    start = time.time()
+    try:
+        res = requests.post(OLLAMA_URL, json=payload, timeout=TIMEOUT)
+        elapsed = round(time.time() - start, 1)
+        return res.json()["response"].strip(), elapsed
+    except requests.exceptions.ReadTimeout:
+        return "⚠️ TIMEOUT", TIMEOUT
+
+# --- Test input ---
 PORTFOLIO = """
 Instrument: GOLDETF
 Qty: 30 | Avg Cost: 160.27 | LTP: 135.26
 Invested: 4808.10 | Cur Val: 4057.80 | P&L: -750.30 | Net chg: -15.60% | Day chg: +3.45%
 """
+
 NEWS = """
 - Gold prices globally up 4% this week on Fed rate uncertainty
 - RBI holds rates steady, rupee weakens slightly
@@ -27,143 +41,157 @@ NEWS = """
 transcript = []
 
 def log(role, model, output, t):
-    transcript.append({"role": role, "model": model, "output": output, "time": t})
+    transcript.append({
+        "role": role,
+        "model": model,
+        "output": output,
+        "time": t
+    })
+
     print(f"\n{'='*55}")
     print(f"[{role}] {model} — {t}s")
     print(f"{'='*55}")
     print(output)
 
+# 🔥 LIMIT CONTEXT SIZE
 def build_context():
-    return "\n\n".join([
+    context = "\n\n".join([
         f"[{e['role']}] {e['model']}:\n{e['output']}"
         for e in transcript
     ])
+    return context[-MAX_CONTEXT_CHARS:]
 
-# ── ROUND 1: Analyst opens ──────────────────────────────
+# ── ROUND 1 ──────────────────────────────
 print("\n🔵 ROUND 1 — Analyst opening")
 r1, t1 = ask(
     "deepseek-r1:8b",
-    f"""You are a financial analyst. Analyse this Indian stock portfolio and recent news.
-    
+    f"""You are a financial analyst. Analyse this portfolio and news.
+
 Portfolio:
 {PORTFOLIO}
 
-Recent News:
+News:
 {NEWS}
 
-Provide:
-1. What is happening to this holding and why
-2. Key risks you see
-3. Two possible scenarios (bullish and bearish) with brief reasoning
-Be specific and concise."""
+Give:
+1. What is happening and why
+2. Key risks
+3. Bull vs Bear scenario
+
+Be concise. Max 120 words. No repetition."""
 )
 log("Round 1 — Analyst", "deepseek-r1:8b", r1, t1)
 
-# ── ROUND 2A: Contrarian challenges ────────────────────
-print("\n🔴 ROUND 2A — Contrarian challenge")
+# ── ROUND 2A ─────────────────────────────
+print("\n🔴 ROUND 2A — Contrarian")
 r2a, t2a = ask(
     "mistral:7b",
-    """You are a skeptical contrarian analyst. You have read the analyst's view above.
-Your job is to challenge it. Specifically:
-1. What assumptions is the analyst making that could be wrong?
-2. What risks did they miss or underweight?
-3. What is the weakest part of their bullish scenario?
-Be direct and specific. Do not repeat what the analyst said.""",
+    """You are a contrarian.
+
+Challenge the analyst:
+1. Wrong assumptions
+2. Missed risks
+3. Weakest bullish point
+
+Be sharp. Max 120 words. No repetition.""",
     context=build_context()
 )
 log("Round 2A — Contrarian", "mistral:7b", r2a, t2a)
 
-# ── ROUND 2B: Quant checks numbers ─────────────────────
-print("\n🟢 ROUND 2B — Quant verification")
+# ── ROUND 2B ─────────────────────────────
+print("\n🟢 ROUND 2B — Quant")
 r2b, t2b = ask(
     "qwen2.5:7b",
-    f"""You are a quantitative analyst. You have the portfolio data and the two views above.
-    
-Portfolio data:
+    f"""You are a quant.
+
+Portfolio:
 {PORTFOLIO}
 
-Your job:
-1. Verify all numbers and percentages cited by both analysts are mathematically consistent
-2. Calculate: what % price recovery is needed to break even?
-3. Is the day change (+3.45%) meaningful relative to the total loss (-15.60%)?
-4. Rate the numerical reliability of the analysis so far: 0-100%
-Be precise. Show your calculations.""",
+Tasks:
+1. Verify all numbers
+2. % recovery to breakeven
+3. Is +3.45% meaningful vs -15.6%?
+4. Reliability score (0-100)
+
+Be precise. Max 120 words.""",
     context=build_context()
 )
 log("Round 2B — Quant", "qwen2.5:7b", r2b, t2b)
 
-# ── ROUND 3: Analyst rebuts ─────────────────────────────
+# ── ROUND 3 ──────────────────────────────
 print("\n🔵 ROUND 3 — Analyst rebuttal")
 r3, t3 = ask(
     "deepseek-r1:8b",
-    """You are the original analyst. You have now read the contrarian's challenges and the quant's numbers.
+    """You are the analyst again.
 
-1. Which of the contrarian's points do you CONCEDE are valid? Why?
-2. Which points do you DEFEND? Why?
-3. Update your two scenarios with any corrections from the quant
-4. Has your overall conviction changed? If so, in which direction?
-Be honest about weaknesses in your original view.""",
+1. What do you concede?
+2. What do you defend?
+3. Update scenarios
+4. Conviction change?
+
+Be concise. Max 120 words.""",
     context=build_context()
 )
 log("Round 3 — Analyst rebuttal", "deepseek-r1:8b", r3, t3)
 
-# ── ROUND 4A: Contrarian final position ────────────────
-print("\n🔴 ROUND 4A — Contrarian final position")
+# ── ROUND 4A ─────────────────────────────
+print("\n🔴 ROUND 4A — Contrarian final")
 r4a, t4a = ask(
     "mistral:7b",
-    """You are the contrarian. You have now seen the analyst's rebuttal.
+    """Final contrarian stance:
 
-1. Do you concede any points after their rebuttal?
-2. What is your single strongest remaining objection?
-3. Give your own probability estimate: what % chance does the bearish scenario play out?
-Keep it tight — 3-4 sentences max.""",
+1. Any concessions?
+2. Strongest objection
+3. Bearish probability %
+
+Max 100 words. No repetition.""",
     context=build_context()
 )
 log("Round 4A — Contrarian final", "mistral:7b", r4a, t4a)
 
-# ── ROUND 4B: Quant final check ─────────────────────────
-print("\n🟢 ROUND 4B — Quant final check")
+# ── ROUND 4B ─────────────────────────────
+print("\n🟢 ROUND 4B — Quant final")
 r4b, t4b = ask(
     "qwen2.5:7b",
-    """You are the quant. The debate has evolved. Do a final check:
+    """Final quant check:
 
-1. Are the revised scenarios numerically coherent?
-2. What is the data confidence score for this analysis overall (0-100%)? 
-   Factor in: data quality, calculation accuracy, and how well the numbers support the conclusions.
-3. One sentence: what single number or metric should the investor watch most closely?""",
+1. Are numbers coherent?
+2. Confidence score (0-100)
+3. One key metric to watch
+
+Max 100 words.""",
     context=build_context()
 )
 log("Round 4B — Quant final", "qwen2.5:7b", r4b, t4b)
 
-# ── ARBITER: Final verdict ──────────────────────────────
-print("\n⭐ ARBITER — Final structured verdict")
+# ── ARBITER ──────────────────────────────
+print("\n⭐ ARBITER — Final verdict")
 arbiter, t_arb = ask(
-    "deepseek-r1:8b",
-    """You are the arbiter. You have read the full debate above. Produce a final structured verdict.
+    "mistral:7b",  # ⚡ faster than deepseek
+    """Give final verdict:
 
-Format your response EXACTLY like this:
+SIGNAL: BULLISH / BEARISH / NEUTRAL
+CONFIDENCE: %
 
-SIGNAL: [BULLISH / BEARISH / NEUTRAL]
-CONFIDENCE: [0-100%]
+BULL CASE: 1 line + %
+BEAR CASE: 1 line + %
 
-SCENARIO A (Bullish): [1 sentence] — Probability: [%]
-SCENARIO B (Bearish): [1 sentence] — Probability: [%]
+BEST POINTS:
+- Analyst:
+- Contrarian:
+- Quant:
 
-KEY DEBATE POINTS:
-- Analyst strongest point: [1 sentence]
-- Contrarian strongest point: [1 sentence]  
-- Quant key finding: [1 sentence]
+ACTION: HOLD / WATCH / EXIT
+REASON: 2 lines max
 
-SUGGESTED ACTION: [HOLD / WATCH / CONSIDER EXIT]
-REASONING: [2-3 sentences max]
-
-WARNING: This is AI-generated analysis, not financial advice.""",
+Max 120 words.""",
     context=build_context()
 )
-log("Arbiter — Final verdict", "deepseek-r1:8b", arbiter, t_arb)
+log("Arbiter", "mistral:7b", arbiter, t_arb)
 
-# ── Summary ─────────────────────────────────────────────
+# ── SUMMARY ──────────────────────────────
 total = round(t1 + t2a + t2b + t3 + t4a + t4b + t_arb, 1)
+
 print(f"\n{'='*55}")
-print(f"Full debate complete in {total}s ({round(total/60, 1)} min)")
-print(f"Rounds: R1={t1}s | R2={t2a+t2b}s | R3={t3}s | R4={t4a+t4b}s | Arbiter={t_arb}s")
+print(f"✅ Completed in {total}s ({round(total/60,1)} min)")
+print(f"R1={t1}s | R2={t2a+t2b}s | R3={t3}s | R4={t4a+t4b}s | Arbiter={t_arb}s")
