@@ -54,6 +54,10 @@ At the end it prints:
 - Time breakdown by round
 - Structured final signal from the arbiter
 
+## Sample result
+
+- Latest captured run: [Testing_Result.md](Testing_Result.md)
+
 ## File
 
 - `test_models.py` — full debate orchestration script.
